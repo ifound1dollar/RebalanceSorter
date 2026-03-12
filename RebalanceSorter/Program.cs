@@ -76,12 +76,16 @@
             {
                 try
                 {
-                    Console.WriteLine("Enter the patient count for all 21 units, separated by a space. Leave empty to generate random data.");
+                    Console.WriteLine("Enter the patient count for all 21 units, separated by a space. Enter 0 for empty unit.");
                     Console.Write("> ");
                     input = Console.ReadLine();
 
                     // Split input and try to parse into int[].
                     string[] inputSplit = input.Split(' ');
+                    if (inputSplit.Length != 21)
+                    {
+                        throw new Exception("Data must be entered for exactly 21 units.");
+                    }
                     int[] patientsPerUnit = new int[21];
                     for (int i = 0; i < patientsPerUnit.Length; i++)
                     {
@@ -109,6 +113,10 @@
                     input = Console.ReadLine();
 
                     inputSplit = input.Split(' ');
+                    if (inputSplit.Length != 8)
+                    {
+                        throw new Exception("Data must be entered for exactly 8 stations.");
+                    }
                     int[] screensPerStation = new int[8];
                     for (int i = 0; i < screensPerStation.Length; i++)
                     {
