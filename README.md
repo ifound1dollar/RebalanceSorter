@@ -16,3 +16,4 @@ Currently, the application only allows simple console input that must be manuall
 
 Regardless of whether inputting data manually or using randomly-generated data, the application outputs the results in easy-to-read format.
 
+<img width="1112" height="643" alt="Sorting Algo" src="https://github.com/user-attachments/assets/da22c756-4b78-4ec7-9d45-046d2a90d68d" />
