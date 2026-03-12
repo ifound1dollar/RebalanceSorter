@@ -57,17 +57,20 @@
 
         static void Main(string[] args)
         {
-            List<StationData> stations = [];
-            List<UnitData> units = [];
+            List<StationData> stations;
+            List<UnitData> units;
+            int patientsPerScreen;
 
             PrintMessage("Manual data entry? y/n : ", ConsoleColor.Yellow, newLine: false);
             string? input = Console.ReadLine();
             Console.WriteLine();
 
+            // Generate random data if no input (null or empty) or is not "y". Else get input from user.
             if (string.IsNullOrEmpty(input) || input.Trim() != "y")
             {
                 stations = GenerateStations();
                 units = GenerateUnits();
+                patientsPerScreen = 16;
 
                 Console.WriteLine("Station count: " + stations.Count);
                 PrintUnits(units);
@@ -76,70 +79,16 @@
             {
                 try
                 {
-                    Console.WriteLine("Enter the patient count for all 21 units, separated by a space. Enter 0 for empty unit.");
-                    Console.Write("> ");
-                    input = Console.ReadLine();
+                    patientsPerScreen = GetPatientsPerScreenFromInput();
+                    Console.WriteLine();
 
-                    // Split input and try to parse into int[].
-                    string[] inputSplit = input.Split(' ');
-                    if (inputSplit.Length != 21)
-                    {
-                        throw new Exception("Data must be entered for exactly 21 units.");
-                    }
-                    int[] patientsPerUnit = new int[21];
-                    for (int i = 0; i < patientsPerUnit.Length; i++)
-                    {
-                        patientsPerUnit[i] = int.Parse(inputSplit[i]);
+                    units = GetUnitsFromInput();
+                    Console.WriteLine();
 
-                        if (patientsPerUnit[i] > 24 || patientsPerUnit[i] < 0)
-                        {
-                            throw new Exception("A unit can only have between 0-24 units (inclusive).");
-                        }
-                    }
+                    stations = GetStationsFromInput();
+                    Console.WriteLine();
 
-                    // If we have a valid int[], generate UnitData and associated PatientData for use.
-                    for (int i = 0; i < patientsPerUnit.Length; i++)
-                    {
-                        units.Add(new UnitData()
-                        {
-                            UnitID = $"UNIT_{i + 1}",
-                            Patients = GeneratePatients(patientsPerUnit[i])
-                        });
-                    }
-
-                    // Now that we have patient data and units, retrieve stations from user.
-                    Console.WriteLine("Enter the available screens for each of the 8 stations. Enter 0 if not in use.");
-                    Console.Write("> ");
-                    input = Console.ReadLine();
-
-                    inputSplit = input.Split(' ');
-                    if (inputSplit.Length != 8)
-                    {
-                        throw new Exception("Data must be entered for exactly 8 stations.");
-                    }
-                    int[] screensPerStation = new int[8];
-                    for (int i = 0; i < screensPerStation.Length; i++)
-                    {
-                        screensPerStation[i] = int.Parse(inputSplit[i]);
-
-                        if (screensPerStation[i] > 5 || screensPerStation[i] < 0)
-                        {
-                            throw new Exception("A station can only have between 0-5 available screens (inclusive).");
-                        }    
-                    }
-
-                    // If we have valid int[], generate StationData.
-                    for (int i = 0; i < screensPerStation.Length; i++)
-                    {
-                        if (screensPerStation[i] == 0) continue;
-
-                        stations.Add(new StationData()
-                        {
-                            StationID = $"STATION_{i + 1}",
-                            ScreensAvailable = screensPerStation[i],
-                            Units = []
-                        });
-                    }
+                    PromptUserForReservations(units, stations, patientsPerScreen);
                 }
                 catch (Exception e)
                 {
@@ -148,7 +97,7 @@
                 }
             }
 
-            stations = BalanceStations(stations, units);
+            stations = BalanceStations(stations, units, patientsPerScreen);
             PrintStations(stations);
         }
 
@@ -156,17 +105,13 @@
 
 
 
-        private static List<StationData> BalanceStations(List<StationData> stations, List<UnitData> units)
+        private static List<StationData> BalanceStations(List<StationData> stations, List<UnitData> units, int patientsPerScreen)
         {
             int stationsCount = stations.Count;
             PrintMessage($"\nBALANCING INTO {stationsCount} STATIONS", ConsoleColor.White, newLine: true);
 
             // Calculate how many screens are required and how many are available.
-            int screensRequired = 0;
-            foreach (UnitData unit in units)
-            {
-                screensRequired += (unit.PatientCount > 16) ? 2 : 1;    // 2 screens if > 16 patients
-            }
+            int screensRequired = CalculateTotalScreensRequired(units, stations, patientsPerScreen);
             int screensAvailable = stations.Sum(s => s.ScreensAvailable);
 
             // Display screens required vs. available, logging error and returning if there are not enough.
@@ -198,20 +143,20 @@
             // It also does not (yet) allow multiple units that sum to <=16 to be combined into one screen.
             // ----- END EXPLANATON -----
 
-            // Store our target sum and display it. This is our goal sum for each station to get as close to as possible.
-            double targetSum = (units.Sum(u => u.PatientCount) / (double)stationsCount);
+            // Calculate our target sum and display it. This is our goal sum for each station to get as close to as possible.
+            double targetSum = CalculateTargetSum(units, stations);
             PrintMessage($"\tTarget sum: {targetSum:f2}", ConsoleColor.Green, newLine: true);
 
             // Sort bins in descending order, then iterate over them and add each unit to the currently-smallest station.
             List<UnitData> sortedUnits = units.OrderByDescending(u => u.PatientCount).ToList();
             for (int index = 0; index < sortedUnits.Count; index++)
             {
-                // First, sort our stations by current sum, putting the smallest first. We want to add the largest units
-                //  to our emptiest stations.
+                // Each iteration, re-sort our stations by current sum, putting the smallest first. We want to add the
+                //  largest units to our emptiest stations.
                 stations = stations.OrderBy(s => s.Units.Sum(u => u.PatientCount)).ToList();
 
                 // Find the first station with enough room for the current unit. Units with >16 patients require 2, else 1.
-                int spaceNeeded = (sortedUnits[index].PatientCount > 16) ? 2 : 1;
+                int spaceNeeded = CalculateSpaceNeeded(sortedUnits[index].PatientCount, patientsPerScreen);
                 int firstWithRoom = FindFirstWithRoom(stations, spaceNeeded);
 
                 // Finally, once we have the index of our first smallest station with room, we add the unit to the station.
@@ -221,18 +166,298 @@
             return stations;
         }
 
-        private static int FindFirstWithRoom(List<StationData> sortedStations, int screensNeeded = 1)
+        #region Private: Algorithm Utility
+
+        private static int FindFirstWithRoom(List<StationData> sortedStations, int spaceNeeded = 1)
         {
             for (int i = 0; i < sortedStations.Count; i++)
             {
-                if (sortedStations[i].ScreensAvailable - sortedStations[i].UnitsCount >= screensNeeded) return i;
+                if (sortedStations[i].ScreensAvailable - sortedStations[i].UnitsCount >= spaceNeeded) return i;
             }
 
             // Logically, should never wind up here. If so, return first index.
             return 0;
         }
 
+        private static double CalculateTargetSum(List<UnitData> units, List<StationData> stations)
+        {
+            double sum = 0;
 
+            // First, sum remainder of what exists in the units array (any non-reserved units).
+            sum = (units.Sum(u => u.PatientCount));
+
+            // Then, iterate over all stations and sum the units within each station.
+            foreach (var station in stations)
+            {
+                sum += (station.Units.Sum(u => u.PatientCount));
+            }
+
+            return sum / (double)stations.Count;
+        }
+
+        private static int CalculateSpaceNeeded(int count, int patientsPerScreen)
+        {
+            // We need as many spaces as count/patientsPerScreen, but rounded up.
+            return (int)Math.Ceiling((double)count / patientsPerScreen);
+        }
+
+        private static int CalculateTotalScreensRequired(List<UnitData> units, List<StationData> stations, int patientsPerScreen)
+        {
+            int screensRequired = 0;
+
+            // First, get space needed from the units still in the List<UnitData> (non-locked/reserved).
+            foreach (UnitData unit in units)
+            {
+                screensRequired += CalculateSpaceNeeded(unit.PatientCount, patientsPerScreen);
+            }
+
+            // Then, iterate over all stations and sum the space needed for each locked/reserved unit.
+            foreach (StationData station in stations)
+            {
+                foreach (var unit in station.Units)
+                {
+                    screensRequired += CalculateSpaceNeeded(unit.PatientCount, patientsPerScreen);
+                }
+            }
+
+            return screensRequired;
+        }
+
+        #endregion
+
+        #region Private: Input Utility
+
+        private static int GetPatientsPerScreenFromInput()
+        {
+            string? input;
+            int patientsPerScreen = 16;
+
+            PrintMessage("Please enter the number of patients that can fit on one screen.", ConsoleColor.Yellow, newLine: true);
+            while (true)
+            {
+                input = Console.ReadLine();
+
+                // Try to parse input, breaking from loop if valid.
+                if (int.TryParse(input, out patientsPerScreen) && patientsPerScreen > 0)
+                {
+                    break;
+                }
+
+                // Else invalid input, so log error and ask for input again.
+                PrintMessage("Please enter a positive integer for number of patients per screen.");
+            }
+
+            return patientsPerScreen;
+        }
+
+        private static List<UnitData> GetUnitsFromInput()
+        {
+            List<UnitData> units = [];
+            string? input;
+            int unitCount;
+
+            // Ask the user how many units there are and store to variable.
+            PrintMessage("Please enter the number of units to balance. Empty units should be omitted.", ConsoleColor.Yellow, newLine: true);
+            while (true)
+            {
+                input = Console.ReadLine();
+
+                // Try to parse input, breaking from loop and moving on if valid.
+                if (int.TryParse(input, out unitCount) && unitCount > 0)
+                {
+                    break;
+                }
+
+                PrintMessage("Please enter a positive integer value.", ConsoleColor.Red, newLine: true);
+            }
+
+            // Prompt the user to input the patient count for all 21 units, one at a time.
+            PrintMessage("For each unit, please enter the unit name and the number of patients within the unit, separated by a space.",
+                ConsoleColor.Yellow, newLine: true);
+            for (int i = 0; i < unitCount; i++)
+            {
+                // Continue prompting for input until valid input is entered.
+                while (true)
+                {
+                    Console.Write($"{i + 1}: ");
+                    input = Console.ReadLine();
+                    if (input == null)
+                    {
+                        PrintMessage("Failed to read input, please try again.", ConsoleColor.Red, newLine: true);
+                        continue;
+                    }
+
+                    // Split input and break into ID and patient count, respectively.
+                    string[] inputSplit = input.Split(' ');
+                    if (inputSplit.Length != 2)
+                    {
+                        PrintMessage("Please enter a string and an integer separated by a space.");
+                        continue;
+                    }
+
+                    // Ensure a unit does not already have this ID.
+                    if (units.Any(u => u.UnitID == inputSplit[0]))
+                    {
+                        PrintMessage("Please enter a unit name that is not already in use.", ConsoleColor.Red, newLine: true);
+                        continue;
+                    }
+
+                    // Try to parse second input and verify >0.
+                    if (!int.TryParse(inputSplit[1], out int value) || value < 0)
+                    {
+                        PrintMessage("Please enter a positive integer for the patient count for this unit.");
+                        continue;
+                    }
+
+                    // Input is valid, so create new UnitData and add to List.
+                    units.Add(new UnitData()
+                    {
+                        UnitID = inputSplit[0],
+                        Patients = Enumerable.Repeat(new PatientData(), value).ToList() // TODO: Adds empty patient data for now.
+                    });
+                    break;
+                }
+            }
+
+            return units;
+        }
+
+        private static List<StationData> GetStationsFromInput()
+        {
+            List<StationData> stations = [];
+            string? input;
+            int stationCount;
+
+            // Ask the user how many units there are and store to variable.
+            PrintMessage("Please enter the number of stations in operation. Stations not in operation should be omitted.",
+                ConsoleColor.Yellow, newLine: true);
+            while (true)
+            {
+                input = Console.ReadLine();
+
+                // Try to parse input, breaking from loop and moving on if valid.
+                if (int.TryParse(input, out stationCount) && stationCount > 0)
+                {
+                    break;
+                }
+
+                PrintMessage("Please enter a positive integer value.", ConsoleColor.Red, newLine: true);
+            }
+
+            // Prompt the user to input the patient count for all 21 units, one at a time.
+            PrintMessage("For each station, please enter the station name and the number of available screens, separated by a space.",
+                ConsoleColor.Yellow, newLine: true);
+            for (int i = 0; i < stationCount; i++)
+            {
+                // Continue prompting for input until valid input is entered.
+                while (true)
+                {
+                    Console.Write($"{i + 1}: ");
+                    input = Console.ReadLine();
+                    if (input == null)
+                    {
+                        PrintMessage("Failed to read input, please try again.", ConsoleColor.Red, newLine: true);
+                        continue;
+                    }
+
+                    // Split input and break into ID and number of available screens, respectively.
+                    string[] inputSplit = input.Split(' ');
+                    if (inputSplit.Length != 2)
+                    {
+                        PrintMessage("Please enter a string and an integer separated by a space.", ConsoleColor.Red, newLine: true);
+                        continue;
+                    }
+
+                    // Ensure a station does not already have this ID.
+                    if (stations.Any(u => u.StationID == inputSplit[0]))
+                    {
+                        PrintMessage("Please enter a station name that is not already in use.");
+                        continue;
+                    }
+
+                    // Try to parse second input and verify >0.
+                    if (!int.TryParse(inputSplit[1], out int value) || value < 0)
+                    {
+                        PrintMessage("Please enter a positive integer for the number of screens available.");
+                        continue;
+                    }
+
+                    // Input is valid, so create new StationData and add to List.
+                    stations.Add(new StationData()
+                    {
+                        StationID = inputSplit[0],
+                        ScreensAvailable = value,
+                        Units = []
+                    });
+                    break;
+                }
+            }
+
+            return stations;
+        }
+
+        private static void PromptUserForReservations(List<UnitData> units, List<StationData> stations, int patientsPerScreen)
+        {
+            string? input = string.Empty;
+            int index = 0;
+
+            // Ask the user if they would like to make any locks/reservations. Only allow up to units.Count iterations.
+            PrintMessage("Please enter any unit:station locks/reservations. If there are none or to finish submitting, input nothing." +
+                "\nFor any locks, enter the unit name and the station name it is locked to, separated by a space.",
+                ConsoleColor.Yellow, newLine: true);
+            while (index < units.Count)
+            {
+                Console.Write($"{index + 1}: ");
+
+                input = Console.ReadLine();
+                if (input == string.Empty) break;  // Intentionally break when no input.
+                if (input == null)
+                {
+                    PrintMessage("Failed to read input, please try again.", ConsoleColor.Red, newLine: true);
+                    continue;
+                }
+
+                // Split input and validate two parts.
+                string[] inputSplit = input.Split(' ');
+                if (inputSplit.Length != 2)
+                {
+                    PrintMessage("Please enter a unit name and a station name, separated by a space.", ConsoleColor.Red, newLine: true);
+                    continue;
+                }
+
+                // Try to find matching unit from first input.
+                if (!units.Any(u => u.UnitID == inputSplit[0]))
+                {
+                    PrintMessage("Could not find an existing unit with that name, please try again.", ConsoleColor.Red, newLine: true);
+                    continue;
+                }
+                UnitData unit = units.Find(u => u.UnitID == inputSplit[0]);         // This will succeed since we checked with Any().
+
+                // Try to find matching station from second input.
+                if (!stations.Any(s => s.StationID == inputSplit[1]))
+                {
+                    PrintMessage("Could not find an existing station with that name, please try again.", ConsoleColor.Red, newLine: true);
+                    continue;
+                }
+                StationData station = stations.Find(s => s.StationID == inputSplit[1]);     // Again, this will succeed.
+
+                // We successfully retrieved input for the unit and station, now ensure the station has room for the unit.
+                int slotsRequired = CalculateSpaceNeeded(unit.PatientCount, patientsPerScreen);
+                if (station.ScreensAvailable - station.UnitsCount < slotsRequired)
+                {
+                    PrintMessage($"{station.StationID} does not have enough available screens to support {unit.UnitID} (requires {slotsRequired}.",
+                        ConsoleColor.Red, newLine: true);
+                    continue;
+                }
+
+                // After fully validating input, finally add the unit to the station and remove the now-assigned unit from the List.
+                station.Units.Add(unit);
+                units.RemoveAll(u => u.UnitID == inputSplit[0]);    // We cannot Remove() a by-value struct, so remove by ID.
+                index++;                                            // Increment index only when successful.
+            }
+        }
+
+        #endregion
 
         #region Private: Random Station / Unit / Patient Generation
 
