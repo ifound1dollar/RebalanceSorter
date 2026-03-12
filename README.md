@@ -17,4 +17,5 @@ As for the implementation, we take our array (List) and first sort it in descend
 Ultimately, this algorithm converges at a rough average because units are sorted descending while stations are ordered ascending. Because it is simple, it is not 100% optimal and will encounter some issues when the slots available to the stations (bins) vary significantly, like some bins only having 2 slots available in the first place. However, the real-world environment in which this application was built for is such that a bin having less than 4 slots available is exceedingly unlikely. 
 
 
-<img width="1112" height="643" alt="Sorting Algo" src="https://github.com/user-attachments/assets/da22c756-4b78-4ec7-9d45-046d2a90d68d" />
+<img width="1108" height="773" alt="Sorting Algo" src="https://github.com/user-attachments/assets/e042a83a-770c-4a4e-ade3-41583ee3e2e2" />
+
