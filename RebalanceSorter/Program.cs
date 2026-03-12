@@ -107,8 +107,7 @@
 
         private static List<StationData> BalanceStations(List<StationData> stations, List<UnitData> units, int patientsPerScreen)
         {
-            int stationsCount = stations.Count;
-            PrintMessage($"\nBALANCING INTO {stationsCount} STATIONS", ConsoleColor.White, newLine: true);
+            PrintMessage($"\nBALANCING INTO {stations.Count} STATIONS", ConsoleColor.White, newLine: true);
 
             // Calculate how many screens are required and how many are available.
             int screensRequired = CalculateTotalScreensRequired(units, stations, patientsPerScreen);
@@ -119,12 +118,10 @@
                 screensRequired, screensAvailable);
             if (screensRequired > screensAvailable)
             {
-                PrintMessage("[ERROR]: There are not enough screens available for all units. Some screens must be combined.",
+                PrintMessage("[ERROR]: There are not enough screens available for all units. Exiting.",
                     ConsoleColor.Red, newLine: true);
-                return stations;
+                Environment.Exit(1);
             }
-
-
 
             // ----- LOGIC EXPLANATION -----
             // We implement a pretty basic algorithm to try and distribute patient load as evenly as possible across the stations
@@ -151,11 +148,10 @@
             List<UnitData> sortedUnits = units.OrderByDescending(u => u.PatientCount).ToList();
             for (int index = 0; index < sortedUnits.Count; index++)
             {
-                // Each iteration, re-sort our stations by current sum, putting the smallest first. We want to add the
-                //  largest units to our emptiest stations.
+                // Each iteration, re-sort our stations by current sum of patients, putting the smallest first.
                 stations = stations.OrderBy(s => s.Units.Sum(u => u.PatientCount)).ToList();
 
-                // Find the first station with enough room for the current unit. Units with >16 patients require 2, else 1.
+                // Find the first station with enough room for the current unit.
                 int spaceNeeded = CalculateSpaceNeeded(sortedUnits[index].PatientCount, patientsPerScreen);
                 int firstWithRoom = FindFirstWithRoom(stations, spaceNeeded);
 
